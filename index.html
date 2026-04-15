@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CERULEON QUANTUM ASTRAL - 超充之城算力规划器</title>
+    <style>
+        :root {
+            --primary: #0ea5e9;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+        }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            padding: 2rem;
+            margin: 0;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: var(--card-bg);
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        h2 { text-align: center; color: var(--primary); margin-bottom: 2rem; }
+        .grid-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+        .control-group { margin-bottom: 1.5rem; }
+        label { display: block; font-weight: 600; margin-bottom: 0.5rem; }
+        input[type="range"] { width: 100%; margin-top: 0.5rem; }
+        input[type="number"] { 
+            width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 6px; 
+        }
+        .radio-group { display: flex; gap: 1rem; }
+        .radio-group label { font-weight: normal; display: flex; align-items: center; gap: 0.3rem; }
+        
+        .results-panel {
+            background: #1e293b;
+            color: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-top: 2rem;
+        }
+        .result-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; text-align: center;
+        }
+        .result-item h4 { margin: 0 0 0.5rem 0; color: #94a3b8; font-size: 0.9rem; }
+        .result-item .value { font-size: 1.8rem; font-weight: bold; color: #38bdf8; }
+        .value-unit { font-size: 1rem; color: #cbd5e1; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>超充之城 - 分布式算力规划模拟器</h2>
+    
+    <div class="grid-layout">
+        <div class="controls">
+            <div class="control-group">
+                <label>大型主站数量 (个): <span id="mainVal">100</span></label>
+                <input type="range" id="mainStations" min="0" max="200" value="100" oninput="updateUI()">
+            </div>
+            
+            <div class="control-group">
+                <label>分站数量 (个): <span id="subVal">500</span></label>
+                <input type="range" id="subStations" min="0" max="1000" value="500" oninput="updateUI()">
+            </div>
+
+            <div class="control-group">
+                <label>硬件架构等级选择:</label>
+                <div class="radio-group">
+                    <label><input type="radio" name="hardware" value="B200" checked onchange="updateUI()"> Blackwell (B200/高性能)</label>
+                    <label><input type="radio" name="hardware" value="H200" onchange="updateUI()"> Hopper (H200/高性价比)</label>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>工业电价 (元/度):</label>
+                <input type="number" id="powerCost" value="0.8" step="0.1" oninput="updateUI()">
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>当前配置单站参数 (系统预设):</label>
+                <ul style="color: var(--text-muted); line-height: 1.8;">
+                    <li>主站算力: <strong id="pMainP">100</strong> P (单站预算: <span id="pMainCost">1145</span>万)</li>
+                    <li>分站算力: <strong id="pSubP">50</strong> P (单站预算: <span id="pSubCost">347</span>万)</li>
+                    <li>主站单日功耗预估: <strong id="pMainPower">360</strong> 度</li>
+                    <li>分站单日功耗预估: <strong id="pSubPower">192</strong> 度</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="results-panel">
+        <div class="result-grid">
+            <div class="result-item">
+                <h4>全网总算力 (Total FLOPs)</h4>
+                <div class="value"><span id="totalFlops">35000</span> <span class="value-unit">P (FP16)</span></div>
+            </div>
+            <div class="result-item">
+                <h4>硬件总投资 (CAPEX)</h4>
+                <div class="value"><span id="totalCost">28.80</span> <span class="value-unit">亿元</span></div>
+            </div>
+            <div class="result-item">
+                <h4>预估日耗电成本 (OPEX)</h4>
+                <div class="value"><span id="dailyPowerCost">10.56</span> <span class="value-unit">万元/天</span></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 定义不同硬件架构的参数标准
+    const hardwareConfig = {
+        'B200': {
+            mainP: 100, subP: 50,
+            mainCost: 1145, subCost: 347, // 万元
+            mainPowerDaily: 15 * 24, // 15kW * 24h
+            subPowerDaily: 8 * 24 // 8kW * 24h
+        },
+        'H200': {
+            mainP: 40, subP: 20,
+            mainCost: 450, subCost: 150, // 万元
+            mainPowerDaily: 10 * 24, 
+            subPowerDaily: 5 * 24
+        }
+    };
+
+    function updateUI() {
+        // 获取输入值
+        const mainCount = parseInt(document.getElementById('mainStations').value);
+        const subCount = parseInt(document.getElementById('subStations').value);
+        const powerRate = parseFloat(document.getElementById('powerCost').value);
+        const hwType = document.querySelector('input[name="hardware"]:checked').value;
+
+        const config = hardwareConfig[hwType];
+
+        // 更新滑块显示的数字
+        document.getElementById('mainVal').innerText = mainCount;
+        document.getElementById('subVal').innerText = subCount;
+
+        // 更新配置说明文本
+        document.getElementById('pMainP').innerText = config.mainP;
+        document.getElementById('pSubP').innerText = config.subP;
+        document.getElementById('pMainCost').innerText = config.mainCost;
+        document.getElementById('pSubCost').innerText = config.subCost;
+        document.getElementById('pMainPower').innerText = config.mainPowerDaily;
+        document.getElementById('pSubPower').innerText = config.subPowerDaily;
+
+        // 核心计算逻辑
+        const totalFlops = (mainCount * config.mainP) + (subCount * config.subP);
+        const totalCostW = (mainCount * config.mainCost) + (subCount * config.subCost); // 单位：万元
+        const totalCostYi = (totalCostW / 10000).toFixed(2); // 转换为亿元
+
+        const totalPowerDaily = (mainCount * config.mainPowerDaily) + (subCount * config.subPowerDaily);
+        const powerCostDailyW = ((totalPowerDaily * powerRate) / 10000).toFixed(2); // 转换为万元
+
+        // 渲染到界面
+        document.getElementById('totalFlops').innerText = totalFlops;
+        document.getElementById('totalCost').innerText = totalCostYi;
+        document.getElementById('dailyPowerCost').innerText = powerCostDailyW;
+    }
+
+    // 初始化运行一次
+    updateUI();
+</script>
+</body>
+</html>
